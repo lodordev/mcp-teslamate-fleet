@@ -1,5 +1,7 @@
 # TeslaMate + Fleet API MCP Server
 
+[![mcp-teslamate-fleet MCP server](https://glama.ai/mcp/servers/lodordev/mcp-teslamate-fleet/badges/card.svg)](https://glama.ai/mcp/servers/lodordev/mcp-teslamate-fleet)
+
 MCP server combining **TeslaMate** historical analytics with **Fleet API** live data and commands. Works with Claude Code, Claude Desktop, Cursor, and any MCP-compatible client.
 
 The first MCP server to bring both data sources together — use TeslaMate for deep analytics and Fleet API for real-time control, or configure just one.
