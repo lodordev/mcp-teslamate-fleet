@@ -105,8 +105,9 @@ DB_NAME = os.environ.get("TESLAMATE_DB_NAME", "teslamate")
 
 # Fleet API (commands + live data)
 PROXY_URL = os.environ.get("TESLA_PROXY_URL", "").rstrip("/")
-FLEET_URL = os.environ.get("TESLA_FLEET_URL",
-                           "https://fleet-api.prd.na.vn.cloud.tesla.com").rstrip("/")
+FLEET_URL = os.environ.get(
+    "TESLA_FLEET_URL", "https://fleet-api.prd.na.vn.cloud.tesla.com"
+).rstrip("/")
 VIN = os.environ.get("TESLA_VIN", "")
 TOKEN_FILE = os.environ.get("TESLA_TOKEN_FILE", "")
 CLIENT_ID = os.environ.get("TESLA_CLIENT_ID", "")
@@ -125,7 +126,10 @@ GAS_MPG = int(os.environ.get("TESLA_GAS_MPG", "28"))
 
 # TLS verification (set false for self-signed proxy certs)
 VERIFY_SSL = os.environ.get("TESLA_VERIFY_SSL", "true").lower() not in (
-    "false", "0", "no")
+    "false",
+    "0",
+    "no",
+)
 
 # Backend availability
 HAS_TESLAMATE = bool(DB_HOST and DB_PASS)
@@ -149,7 +153,9 @@ def _check_rate_limit() -> str | None:
         _command_day = today
         _command_count = 0
     if _command_count >= DAILY_COMMAND_LIMIT:
-        return f"Daily command limit reached ({DAILY_COMMAND_LIMIT}). Resets at midnight."
+        return (
+            f"Daily command limit reached ({DAILY_COMMAND_LIMIT}). Resets at midnight."
+        )
     return None
 
 
@@ -175,7 +181,8 @@ def _get_access_token() -> str:
     if not TOKEN_FILE:
         raise RuntimeError(
             "TESLA_TOKEN_FILE not set. "
-            "Set this to the path of your Fleet API tokens.json file.")
+            "Set this to the path of your Fleet API tokens.json file."
+        )
 
     token_path = Path(TOKEN_FILE)
     if not token_path.exists():
@@ -225,12 +232,14 @@ def _get_access_token() -> str:
 
 # -- Fleet API helpers ---------------------------------------------------------
 
+
 async def _fleet_get(path: str) -> dict:
     """GET from Fleet API (direct, for data reads)."""
     if not HAS_FLEET_API:
         raise RuntimeError(
             "Fleet API not configured. "
-            "Set TESLA_VIN and TESLA_TOKEN_FILE environment variables.")
+            "Set TESLA_VIN and TESLA_TOKEN_FILE environment variables."
+        )
     token = _get_access_token()
     async with httpx.AsyncClient(timeout=15.0, verify=VERIFY_SSL) as client:
         resp = await client.get(
@@ -244,9 +253,12 @@ async def _fleet_get(path: str) -> dict:
 async def _fleet_command(command: str, body: dict | None = None) -> dict:
     """Send a vehicle command through the HTTP proxy (signed)."""
     if not HAS_PROXY:
-        return {"error": (
-            "Fleet API proxy not configured. "
-            "Set TESLA_PROXY_URL, TESLA_VIN, and TESLA_TOKEN_FILE.")}
+        return {
+            "error": (
+                "Fleet API proxy not configured. "
+                "Set TESLA_PROXY_URL, TESLA_VIN, and TESLA_TOKEN_FILE."
+            )
+        }
     if not VIN:
         return {"error": "TESLA_VIN not set."}
 
@@ -269,8 +281,10 @@ async def _fleet_command(command: str, body: dict | None = None) -> dict:
             try:
                 result = resp.json()
             except Exception:
-                return {"error": f"Non-JSON response ({resp.status_code}): "
-                                 f"{resp.text[:200]}"}
+                return {
+                    "error": f"Non-JSON response ({resp.status_code}): "
+                    f"{resp.text[:200]}"
+                }
             _log_command(command)
             return result
     except Exception as e:
@@ -279,13 +293,15 @@ async def _fleet_command(command: str, body: dict | None = None) -> dict:
 
 # -- DB helper -----------------------------------------------------------------
 
+
 def _get_conn():
     """Get a Postgres connection to TeslaMate's database."""
     if not HAS_TESLAMATE:
         raise RuntimeError(
             "TeslaMate database not configured. "
             "Set TESLAMATE_DB_HOST and TESLAMATE_DB_PASS environment variables. "
-            "See README for setup instructions.")
+            "See README for setup instructions."
+        )
     return psycopg2.connect(
         host=DB_HOST,
         port=DB_PORT,
@@ -305,8 +321,12 @@ def _query(sql: str, params: tuple = ()) -> list[dict]:
             cur.execute(sql, params)
             rows = []
             for row in cur.fetchall():
-                rows.append({k: float(v) if isinstance(v, Decimal) else v
-                             for k, v in dict(row).items()})
+                rows.append(
+                    {
+                        k: float(v) if isinstance(v, Decimal) else v
+                        for k, v in dict(row).items()
+                    }
+                )
             return rows
     finally:
         conn.close()
@@ -330,14 +350,16 @@ def _c_to_f(c: float | None) -> int | None:
 
 # -- TeslaMate Read Tools ------------------------------------------------------
 
+
 @mcp.tool()
 async def tesla_status() -> str:
     """Current vehicle state — battery, range, location, climate, odometer.
 
     Returns the latest position snapshot and vehicle info from TeslaMate.
     """
-    car = _query_one(f"SELECT id, name, model, efficiency FROM cars "
-                     f"WHERE id = {CAR_ID} LIMIT 1")
+    car = _query_one(
+        f"SELECT id, name, model, efficiency FROM cars WHERE id = {CAR_ID} LIMIT 1"
+    )
 
     pos = _query_one(f"""
         SELECT battery_level, ideal_battery_range_km,
@@ -371,7 +393,8 @@ async def tesla_status() -> str:
     # Check geofence for current position
     geofence = None
     if pos and pos.get("latitude") and pos.get("longitude"):
-        geofence = _query_one("""
+        geofence = _query_one(
+            """
             SELECT name, radius, dist.distance_m FROM geofences,
             LATERAL (SELECT (6371000 * acos(
                        cos(radians(%s)) * cos(radians(latitude))
@@ -381,15 +404,19 @@ async def tesla_status() -> str:
             WHERE dist.distance_m <= radius
             ORDER BY dist.distance_m
             LIMIT 1
-        """, (pos["latitude"], pos["longitude"], pos["latitude"]))
+        """,
+            (pos["latitude"], pos["longitude"], pos["latitude"]),
+        )
         if geofence is None:
-            geofence = _query_one("""
+            geofence = _query_one(
+                """
                 SELECT name FROM geofences
                 WHERE ABS(latitude - %s) < 0.01 AND ABS(longitude - %s) < 0.01
                 ORDER BY ABS(latitude - %s) + ABS(longitude - %s)
                 LIMIT 1
-            """, (pos["latitude"], pos["longitude"],
-                  pos["latitude"], pos["longitude"]))
+            """,
+                (pos["latitude"], pos["longitude"], pos["latitude"], pos["longitude"]),
+            )
 
     update = _query_one(f"""
         SELECT version FROM updates
@@ -412,8 +439,11 @@ async def tesla_status() -> str:
         range_mi = _km_to_mi(pos.get("ideal_battery_range_km"))
         lines.append(f"Battery: {bat}%" + (f" ({range_mi} mi)" if range_mi else ""))
 
-        is_charging = (charge and charge.get("end_date") is None
-                       and charge.get("start_date") is not None)
+        is_charging = (
+            charge
+            and charge.get("end_date") is None
+            and charge.get("start_date") is not None
+        )
         if is_charging:
             kwh = charge.get("charge_energy_added") or 0
             lines.append(f"Charging: Yes ({kwh:.1f} kWh added so far)")
@@ -463,8 +493,9 @@ async def tesla_status() -> str:
         dur = charge.get("duration_min") or 0
         start_bat = charge.get("start_battery_level") or "?"
         end_bat = charge.get("end_battery_level") or "?"
-        lines.append(f"Last charge: {kwh:.1f} kWh in {dur} min "
-                    f"({start_bat}% → {end_bat}%)")
+        lines.append(
+            f"Last charge: {kwh:.1f} kWh in {dur} min ({start_bat}% → {end_bat}%)"
+        )
 
     return "\n".join(lines) if lines else "No vehicle data found. Is TeslaMate running?"
 
@@ -476,7 +507,8 @@ async def tesla_charging_history(days: int = 30) -> str:
     Shows energy added, duration, battery range, and location for each session.
     """
     cutoff = (datetime.now() - timedelta(days=days)).isoformat()
-    rows = _query(f"""
+    rows = _query(
+        f"""
         SELECT cp.start_date, cp.end_date,
                cp.charge_energy_added, cp.duration_min,
                cp.start_battery_level, cp.end_battery_level,
@@ -493,7 +525,9 @@ async def tesla_charging_history(days: int = 30) -> str:
         WHERE cp.car_id = {CAR_ID} AND cp.start_date >= %s
         ORDER BY cp.start_date DESC
         LIMIT 50
-    """, (cutoff,))
+    """,
+        (cutoff,),
+    )
 
     if not rows:
         return f"No charging sessions in the last {days} days."
@@ -508,8 +542,9 @@ async def tesla_charging_history(days: int = 30) -> str:
         end_pct = r.get("end_battery_level", "?")
         loc = r.get("location") or "Unknown"
         date_str = str(r.get("start_date", ""))[:16]
-        lines.append(f"- {date_str}: {kwh:.1f} kWh, {dur} min, "
-                    f"{start_pct}% → {end_pct}%, {loc}")
+        lines.append(
+            f"- {date_str}: {kwh:.1f} kWh, {dur} min, {start_pct}% → {end_pct}%, {loc}"
+        )
 
     lines.append(f"\n**Total:** {total_kwh:.1f} kWh across {len(rows)} sessions")
     return "\n".join(lines)
@@ -522,7 +557,8 @@ async def tesla_drives(days: int = 30) -> str:
     Shows the last N days of driving activity with energy consumption.
     """
     cutoff = (datetime.now() - timedelta(days=days)).isoformat()
-    rows = _query(f"""
+    rows = _query(
+        f"""
         SELECT d.start_date, d.end_date,
                d.distance, d.duration_min,
                d.start_ideal_range_km, d.end_ideal_range_km,
@@ -535,7 +571,9 @@ async def tesla_drives(days: int = 30) -> str:
         WHERE d.car_id = {CAR_ID} AND d.start_date >= %s
         ORDER BY d.start_date DESC
         LIMIT 50
-    """, (cutoff,))
+    """,
+        (cutoff,),
+    )
 
     if not rows:
         return f"No drives recorded in the last {days} days."
@@ -563,16 +601,17 @@ async def tesla_drives(days: int = 30) -> str:
             wh_per_mi = round(kwh * 1000 / (dist_km * 0.621371))
             eff_str = f", {wh_per_mi} Wh/mi"
 
-        lines.append(f"- {date_str}: {dist_mi} mi, {dur} min, "
-                    f"{start} → {end}{eff_str}")
+        lines.append(f"- {date_str}: {dist_mi} mi, {dur} min, {start} → {end}{eff_str}")
 
     total_mi = _km_to_mi(total_km) or 0
     avg_eff = ""
     if total_km > 0 and total_kwh > 0:
         avg_wh_per_mi = round(total_kwh * 1000 / (total_km * 0.621371))
         avg_eff = f", avg {avg_wh_per_mi} Wh/mi"
-    lines.append(f"\n**Total:** {total_mi} mi, {total_kwh:.1f} kWh, "
-                f"{total_min} min across {len(rows)} trips{avg_eff}")
+    lines.append(
+        f"\n**Total:** {total_mi} mi, {total_kwh:.1f} kWh, "
+        f"{total_min} min across {len(rows)} trips{avg_eff}"
+    )
     return "\n".join(lines)
 
 
@@ -639,7 +678,8 @@ async def tesla_efficiency(days: int = 90) -> str:
     Shows weekly average efficiency from driving data.
     """
     cutoff = (datetime.now() - timedelta(days=days)).isoformat()
-    rows = _query(f"""
+    rows = _query(
+        f"""
         SELECT date_trunc('week', start_date) AS week,
                SUM(distance) AS total_km,
                SUM(GREATEST(start_ideal_range_km - end_ideal_range_km, 0)
@@ -651,7 +691,9 @@ async def tesla_efficiency(days: int = 90) -> str:
         WHERE car_id = {CAR_ID} AND start_date >= %s AND distance > 0
         GROUP BY date_trunc('week', start_date)
         ORDER BY week DESC
-    """, (cutoff,))
+    """,
+        (cutoff,),
+    )
 
     if not rows:
         return f"No driving data in the last {days} days."
@@ -671,8 +713,9 @@ async def tesla_efficiency(days: int = 90) -> str:
             wh_per_mi = round(kwh * 1000 / (km * 0.621371))
             eff_str = f", {wh_per_mi} Wh/mi"
 
-        lines.append(f"- {week}: {mi} mi, {kwh:.1f} kWh, "
-                    f"{trips} trips{eff_str}{temp_str}")
+        lines.append(
+            f"- {week}: {mi} mi, {kwh:.1f} kWh, {trips} trips{eff_str}{temp_str}"
+        )
 
     return "\n".join(lines)
 
@@ -685,7 +728,8 @@ async def tesla_location_history(days: int = 7) -> str:
     """
     cutoff = (datetime.now() - timedelta(days=days)).isoformat()
 
-    rows = _query(f"""
+    rows = _query(
+        f"""
         SELECT ROUND(latitude::numeric, 3) AS lat,
                ROUND(longitude::numeric, 3) AS lon,
                COUNT(*) AS position_count,
@@ -696,7 +740,9 @@ async def tesla_location_history(days: int = 7) -> str:
         GROUP BY ROUND(latitude::numeric, 3), ROUND(longitude::numeric, 3)
         ORDER BY position_count DESC
         LIMIT 20
-    """, (cutoff,))
+    """,
+        (cutoff,),
+    )
 
     if not rows:
         return f"No location data in the last {days} days."
@@ -730,13 +776,16 @@ async def tesla_state_history(days: int = 7) -> str:
     Shows when the car was awake vs sleeping, useful for vampire drain analysis.
     """
     cutoff = (datetime.now() - timedelta(days=days)).isoformat()
-    rows = _query(f"""
+    rows = _query(
+        f"""
         SELECT state, start_date, end_date
         FROM states
         WHERE car_id = {CAR_ID} AND start_date >= %s
         ORDER BY start_date DESC
         LIMIT 100
-    """, (cutoff,))
+    """,
+        (cutoff,),
+    )
 
     if not rows:
         return f"No state data in the last {days} days."
@@ -799,6 +848,7 @@ async def tesla_software_updates() -> str:
 
 # -- Fleet API Live Data -------------------------------------------------------
 
+
 @mcp.tool()
 async def tesla_live() -> str:
     """Live vehicle data from Fleet API — real-time battery, charging, climate, locks, sentry.
@@ -811,7 +861,8 @@ async def tesla_live() -> str:
 
     data = await _fleet_get(
         f"/api/1/vehicles/{VIN}/vehicle_data"
-        f"?endpoints=charge_state%3Bclimate_state%3Bvehicle_state%3Bdrive_state")
+        f"?endpoints=charge_state%3Bclimate_state%3Bvehicle_state%3Bdrive_state"
+    )
     r = data.get("response", {})
     cs = r.get("charge_state", {})
     cl = r.get("climate_state", {})
@@ -820,10 +871,12 @@ async def tesla_live() -> str:
 
     vehicle_name = vs.get("vehicle_name") or "Tesla"
     lines = [f"**{vehicle_name}** (live)\n"]
-    lines.append(f"Battery: {cs.get('battery_level')}% "
-                 f"({cs.get('battery_range', 0):.0f} mi)")
-    lines.append(f"Charging: {cs.get('charging_state')} "
-                 f"(limit {cs.get('charge_limit_soc')}%)")
+    lines.append(
+        f"Battery: {cs.get('battery_level')}% ({cs.get('battery_range', 0):.0f} mi)"
+    )
+    lines.append(
+        f"Charging: {cs.get('charging_state')} (limit {cs.get('charge_limit_soc')}%)"
+    )
     if cs.get("charging_state") == "Charging":
         rate = cs.get("charge_rate", 0)
         added = cs.get("charge_energy_added", 0)
@@ -832,8 +885,10 @@ async def tesla_live() -> str:
 
     inside_f = _c_to_f(cl.get("inside_temp"))
     outside_f = _c_to_f(cl.get("outside_temp"))
-    lines.append(f"Climate: {'ON' if cl.get('is_climate_on') else 'Off'}"
-                f", inside {inside_f}°F, outside {outside_f}°F")
+    lines.append(
+        f"Climate: {'ON' if cl.get('is_climate_on') else 'Off'}"
+        f", inside {inside_f}°F, outside {outside_f}°F"
+    )
     if cl.get("is_climate_on"):
         target_f = _c_to_f(cl.get("driver_temp_setting"))
         lines.append(f"  Target: {target_f}°F")
@@ -869,14 +924,17 @@ async def tesla_live() -> str:
 
     update = vs.get("software_update", {})
     if update.get("status") and update.get("version", "").strip():
-        lines.append(f"Update available: {update['version'].strip()} "
-                    f"(est. {update.get('expected_duration_sec', 0) // 60} min)")
+        lines.append(
+            f"Update available: {update['version'].strip()} "
+            f"(est. {update.get('expected_duration_sec', 0) // 60} min)"
+        )
 
     lines.append(f"\nCommands today: {_command_count}/{DAILY_COMMAND_LIMIT}")
     return "\n".join(lines)
 
 
 # -- Fleet API Command Tools ---------------------------------------------------
+
 
 def _cmd_result(result: dict | None, success_msg: str) -> str:
     """Parse a Fleet API command response into a user-friendly message."""
@@ -912,10 +970,13 @@ async def tesla_set_temp(temp_f: int = 70) -> str:
         temp_f: Target temperature in Fahrenheit (60-85 reasonable range)
     """
     temp_c = round((temp_f - 32) * 5 / 9, 1)
-    result = await _fleet_command("set_temps", {
-        "driver_temp": temp_c,
-        "passenger_temp": temp_c,
-    })
+    result = await _fleet_command(
+        "set_temps",
+        {
+            "driver_temp": temp_c,
+            "passenger_temp": temp_c,
+        },
+    )
     return _cmd_result(result, f"Temperature set to {temp_f}°F ({temp_c}°C).")
 
 
@@ -1009,6 +1070,7 @@ async def tesla_sentry(on: bool = True) -> str:
 
 # -- Analytics Tools -----------------------------------------------------------
 
+
 @mcp.tool()
 async def tesla_savings(
     gas_price: float = None,
@@ -1053,12 +1115,17 @@ async def tesla_savings(
         cost_per_mi = round(elec_cost / mi * 100, 1) if mi > 0 else 0
 
         lines.append(f"**{label}:** {mi:,.1f} mi")
-        lines.append(f"  Electricity: {kwh:,.1f} kWh × ${ELECTRICITY_RATE} "
-                     f"= ${elec_cost:,.2f}")
-        lines.append(f"  Gas equivalent: {mi:,.1f} mi ÷ {_mpg} MPG × "
-                     f"${_gas}/gal = ${gas_cost:,.2f}")
-        lines.append(f"  **Saved: ${saved:,.2f}** ({cost_per_mi}¢/mi electric vs "
-                     f"{round(_gas / _mpg * 100, 1)}¢/mi gas)")
+        lines.append(
+            f"  Electricity: {kwh:,.1f} kWh × ${ELECTRICITY_RATE} = ${elec_cost:,.2f}"
+        )
+        lines.append(
+            f"  Gas equivalent: {mi:,.1f} mi ÷ {_mpg} MPG × "
+            f"${_gas}/gal = ${gas_cost:,.2f}"
+        )
+        lines.append(
+            f"  **Saved: ${saved:,.2f}** ({cost_per_mi}¢/mi electric vs "
+            f"{round(_gas / _mpg * 100, 1)}¢/mi gas)"
+        )
         lines.append("")
 
     return "\n".join(lines)
@@ -1107,8 +1174,10 @@ async def tesla_trip_cost(
     lat1, lon1 = math.radians(pos["latitude"]), math.radians(pos["longitude"])
     lat2, lon2 = math.radians(dest_lat), math.radians(dest_lon)
     dlat, dlon = lat2 - lat1, lon2 - lon1
-    a = (math.sin(dlat / 2) ** 2
-         + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2) ** 2)
+    a = (
+        math.sin(dlat / 2) ** 2
+        + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2) ** 2
+    )
     straight_mi = 3959 * 2 * math.asin(math.sqrt(a))
     road_mi = round(straight_mi * 1.3, 1)
     round_trip = round(road_mi * 2, 1)
@@ -1124,7 +1193,6 @@ async def tesla_trip_cost(
     if eff and eff["km"] > 0:
         wh_per_mi = round(eff["kwh"] * 1000 / (eff["km"] * 0.621371))
 
-    kwh_one_way = round(road_mi * wh_per_mi / 1000, 1)
     kwh_round = round(round_trip * wh_per_mi / 1000, 1)
     cost_round = round(kwh_round * ELECTRICITY_RATE, 2)
     gas_equiv = round(round_trip / _mpg * _gas, 2)
@@ -1132,8 +1200,9 @@ async def tesla_trip_cost(
     bat = pos.get("battery_level", 0)
     range_mi = round((pos.get("ideal_battery_range_km") or 0) * 0.621371)
 
-    lines = [f"**Trip to {dest_name}** ({road_mi} mi each way, "
-             f"{round_trip} mi round trip)\n"]
+    lines = [
+        f"**Trip to {dest_name}** ({road_mi} mi each way, {round_trip} mi round trip)\n"
+    ]
     lines.append(f"Estimated: {kwh_round} kWh @ {wh_per_mi} Wh/mi (your 30-day avg)")
     lines.append(f"Cost: ${cost_round} (gas equivalent: ${gas_equiv})")
     lines.append(f"Current battery: {bat}% ({range_mi} mi)")
@@ -1143,10 +1212,10 @@ async def tesla_trip_cost(
     elif range_mi >= road_mi:
         lines.append("Range: Sufficient one-way, charge at destination for return")
     else:
-        pct_needed = (min(95, round(round_trip / range_mi * bat))
-                      if range_mi > 0 else 95)
-        lines.append(f"Range: NOT sufficient — charge to {pct_needed}%+ "
-                     "before departure")
+        pct_needed = min(95, round(round_trip / range_mi * bat)) if range_mi > 0 else 95
+        lines.append(
+            f"Range: NOT sufficient — charge to {pct_needed}%+ before departure"
+        )
 
     return "\n".join(lines)
 
@@ -1192,8 +1261,9 @@ async def tesla_efficiency_by_temp() -> str:
         kwh = r.get("total_kwh") or 0
         mi = km * 0.621371
         wh_mi = round(kwh * 1000 / mi) if mi > 0 else 0
-        lines.append(f"{r['temp_range']:<15} {r['trips']:>6} {wh_mi:>7} "
-                     f"{round(mi):>9,}")
+        lines.append(
+            f"{r['temp_range']:<15} {r['trips']:>6} {wh_mi:>7} {round(mi):>9,}"
+        )
 
     return "\n".join(lines)
 
@@ -1230,8 +1300,7 @@ async def tesla_charging_by_location() -> str:
         sessions = r.get("sessions", 0)
         kwh = r.get("total_kwh", 0)
         cost = round(kwh * ELECTRICITY_RATE, 2)
-        lines.append(f"- **{loc}**: {sessions} sessions, "
-                     f"{kwh:.1f} kWh (~${cost})")
+        lines.append(f"- **{loc}**: {sessions} sessions, {kwh:.1f} kWh (~${cost})")
 
     return "\n".join(lines)
 
@@ -1243,7 +1312,8 @@ async def tesla_top_destinations(limit: int = 15) -> str:
     Args:
         limit: Number of destinations to show (default: 15)
     """
-    rows = _query(f"""
+    rows = _query(
+        f"""
         SELECT ea.display_name AS destination,
                COUNT(*) AS visits,
                COALESCE(SUM(d.distance), 0) AS total_km
@@ -1253,7 +1323,9 @@ async def tesla_top_destinations(limit: int = 15) -> str:
         GROUP BY ea.display_name
         ORDER BY visits DESC
         LIMIT %s
-    """, (limit,))
+    """,
+        (limit,),
+    )
 
     if not rows:
         return "No driving data yet."
@@ -1275,7 +1347,8 @@ async def tesla_longest_trips(limit: int = 10) -> str:
     Args:
         limit: Number of trips to show (default: 10)
     """
-    rows = _query(f"""
+    rows = _query(
+        f"""
         SELECT d.start_date, d.distance, d.duration_min,
                GREATEST(d.start_ideal_range_km - d.end_ideal_range_km, 0)
                    * {KWH_PER_KM} AS consumption_kwh,
@@ -1287,7 +1360,9 @@ async def tesla_longest_trips(limit: int = 10) -> str:
         WHERE d.car_id = {CAR_ID} AND d.distance > 0
         ORDER BY d.distance DESC
         LIMIT %s
-    """, (limit,))
+    """,
+        (limit,),
+    )
 
     if not rows:
         return "No driving data yet."
@@ -1300,8 +1375,7 @@ async def tesla_longest_trips(limit: int = 10) -> str:
         end = r.get("end_loc") or "?"
         date = str(r.get("start_date", ""))[:10]
         kwh = r.get("consumption_kwh") or 0
-        lines.append(f"{i}. {mi} mi — {start} → {end} "
-                     f"({date}, {dur}min, {kwh:.1f}kWh)")
+        lines.append(f"{i}. {mi} mi — {start} → {end} ({date}, {dur}min, {kwh:.1f}kWh)")
 
     return "\n".join(lines)
 
@@ -1313,7 +1387,8 @@ async def tesla_monthly_summary(months: int = 6) -> str:
     Args:
         months: Number of months to show (default: 6)
     """
-    rows = _query(f"""
+    rows = _query(
+        f"""
         SELECT date_trunc('month', start_date) AS month,
                COUNT(*) AS trips,
                COALESCE(SUM(distance), 0) AS total_km,
@@ -1325,14 +1400,17 @@ async def tesla_monthly_summary(months: int = 6) -> str:
         GROUP BY date_trunc('month', start_date)
         ORDER BY month DESC
         LIMIT %s
-    """, (months,))
+    """,
+        (months,),
+    )
 
     if not rows:
         return "No driving data yet."
 
     lines = ["**Monthly Summary**\n"]
-    lines.append(f"{'Month':<12} {'Trips':>6} {'Miles':>10} {'kWh':>8} "
-                 f"{'Wh/mi':>7} {'Cost':>8}")
+    lines.append(
+        f"{'Month':<12} {'Trips':>6} {'Miles':>10} {'kWh':>8} {'Wh/mi':>7} {'Cost':>8}"
+    )
     lines.append("-" * 57)
 
     for r in rows:
@@ -1343,8 +1421,9 @@ async def tesla_monthly_summary(months: int = 6) -> str:
         kwh = r.get("total_kwh") or 0
         wh_mi = round(kwh * 1000 / (km * 0.621371)) if km > 0 else 0
         cost = round(kwh * ELECTRICITY_RATE, 2)
-        lines.append(f"{month:<12} {trips:>6} {mi:>9,} {kwh:>7.1f} "
-                     f"{wh_mi:>7} ${cost:>6.2f}")
+        lines.append(
+            f"{month:<12} {trips:>6} {mi:>9,} {kwh:>7.1f} {wh_mi:>7} ${cost:>6.2f}"
+        )
 
     return "\n".join(lines)
 
@@ -1360,7 +1439,8 @@ async def tesla_vampire_drain(days: int = 14) -> str:
         days: Number of days to analyze (default: 14)
     """
     cutoff = (datetime.now() - timedelta(days=days)).isoformat()
-    rows = _query(f"""
+    rows = _query(
+        f"""
         WITH ordered AS (
             SELECT date, battery_level,
                    LAG(battery_level) OVER (ORDER BY date) AS prev_level,
@@ -1379,7 +1459,9 @@ async def tesla_vampire_drain(days: int = 14) -> str:
           AND EXTRACT(EPOCH FROM (date - prev_date)) / 3600 <= 48
         ORDER BY drain DESC
         LIMIT 20
-    """, (cutoff,))
+    """,
+        (cutoff,),
+    )
 
     if not rows:
         return f"No significant vampire drain detected in the last {days} days."
@@ -1394,12 +1476,18 @@ async def tesla_vampire_drain(days: int = 14) -> str:
         date = str(r.get("prev_date", ""))[:10]
         lines.append(f"- {date}: -{drain}% over {hours:.0f}h ({rate}%/hr)")
 
-    avg_rate = round(total_drain / len(rows) / (
-        sum(r.get("hours_parked", 8) for r in rows) / len(rows)), 2)
+    avg_rate = round(
+        total_drain
+        / len(rows)
+        / (sum(r.get("hours_parked", 8) for r in rows) / len(rows)),
+        2,
+    )
     lines.append(f"\nAverage drain rate: {avg_rate}%/hr")
     if avg_rate > 1.0:
-        lines.append("⚠ Above normal — check sentry mode camera activity "
-                     "or third-party app polling")
+        lines.append(
+            "⚠ Above normal — check sentry mode camera activity "
+            "or third-party app polling"
+        )
     elif avg_rate > 0.5:
         lines.append("Slightly elevated — sentry mode active?")
     else:
