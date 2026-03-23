@@ -1,6 +1,6 @@
-# Tesla MCP Server
+# TeslaMate + Fleet API MCP Server
 
-MCP server for Tesla vehicles combining **TeslaMate** historical analytics with **Fleet API** live data and commands. Works with Claude Code, Claude Desktop, Cursor, and any MCP-compatible client.
+MCP server combining **TeslaMate** historical analytics with **Fleet API** live data and commands. Works with Claude Code, Claude Desktop, Cursor, and any MCP-compatible client.
 
 The first MCP server to bring both data sources together — use TeslaMate for deep analytics and Fleet API for real-time control, or configure just one.
 
@@ -26,7 +26,7 @@ The first MCP server to bring both data sources together — use TeslaMate for d
   "mcpServers": {
     "tesla": {
       "command": "uvx",
-      "args": ["--from", "git+https://github.com/lodordev/mcp-tesla", "tesla-mcp"],
+      "args": ["--from", "git+https://github.com/lodordev/mcp-teslamate-fleet", "mcp-teslamate-fleet"],
       "env": {
         "TESLAMATE_DB_HOST": "localhost",
         "TESLAMATE_DB_PASS": "your_password",
@@ -49,7 +49,7 @@ Same structure — add under `mcpServers`.
 ### Local install
 
 ```bash
-git clone https://github.com/lodordev/mcp-tesla
+git clone https://github.com/lodordev/mcp-teslamate-fleet
 cd tesla-mcp
 pip install -e .
 ```
